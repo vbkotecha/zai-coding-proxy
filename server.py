@@ -5,24 +5,28 @@ import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-ZAI_CODING_URL = "https://api.z.ai/api/coding/paas/v4"
+ZAI_CODING_BASE = "https://api.z.ai/api/coding/paas/v4"
 ZAI_API_KEY = os.environ.get("ZAI_API_KEY", "")
 
 class ProxyHandler(BaseHTTPRequestHandler):
-    def do_POST(self):
+    
+    def _forward_request(self):
         content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length)
+        body = self.rfile.read(content_length) if content_length > 0 else b''
         
-        # Forward to Z.AI Coding endpoint
-        target_url = ZAI_CODING_URL + self.path
+        # Strip /v1 prefix if present (Letta sends /v1/chat/completions)
+        path = self.path
+        if path.startswith("/v1"):
+            path = path[3:]  # Remove /v1 prefix
         
-        req = urllib.request.Request(target_url, data=body, method="POST")
+        target_url = ZAI_CODING_BASE + path
+        
+        req = urllib.request.Request(target_url, data=body if body else None, method="POST")
         req.add_header("Authorization", f"Bearer {ZAI_API_KEY}")
         req.add_header("Content-Type", self.headers.get("Content-Type", "application/json"))
         
         try:
-            # Handle streaming vs non-streaming
-            payload = json.loads(body)
+            payload = json.loads(body) if body else {}
             is_stream = payload.get("stream", False)
             
             with urllib.request.urlopen(req, timeout=120) as resp:
@@ -32,8 +36,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     self.send_header("Cache-Control", "no-cache")
                     self.send_header("Connection", "keep-alive")
                     self.end_headers()
-                    
-                    # Forward SSE chunks
                     while True:
                         chunk = resp.read(4096)
                         if not chunk:
@@ -59,8 +61,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode())
     
+    def do_POST(self):
+        self._forward_request()
+    
     def do_GET(self):
-        """Handle model listing requests."""
         if "/models" in self.path:
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -75,11 +79,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(models).encode())
         else:
-            self.send_response(404)
-            self.end_headers()
+            self._forward_request()
     
     def log_message(self, format, *args):
-        pass  # Suppress logs
+        pass
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))

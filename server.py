@@ -73,6 +73,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 "object": "list",
                 "data": [
                     {"id": "glm-5.2", "object": "model", "owned_by": "zai"},
+                    {"id": "glm-5.1", "object": "model", "owned_by": "zai"},
                     {"id": "glm-5-turbo", "object": "model", "owned_by": "zai"},
                     {"id": "glm-4.7", "object": "model", "owned_by": "zai"}
                 ]
